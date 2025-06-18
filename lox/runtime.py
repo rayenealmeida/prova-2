@@ -17,6 +17,30 @@ __all__ = [
 number = (float, int)
 
 
+def is_integer_var(name: str) -> bool:
+    """Verifica se o nome da variável indica que deve ser tratada como inteiro"""
+    return name and name[0].lower() in {'i', 'j', 'k', 'l', 'm', 'n'}
+
+
+def to_integer(value: "Value") -> int:
+    """Converte um valor para inteiro seguindo as regras do Lox"""
+    if isinstance(value, str):
+        try:
+            return int(float(value))
+        except (ValueError, TypeError):
+            return 0
+    elif isinstance(value, (int, float)):
+        return int(value)
+    return 0
+
+
+def coerce_value(name: str, value: "Value") -> "Value":
+    """Aplica coerção para inteiro se o nome da variável indicar"""
+    if is_integer_var(name):
+        return to_integer(value)
+    return value
+
+
 @dataclass(frozen=True)
 class LoxClass:
     """
@@ -64,6 +88,14 @@ class LoxInstance:
     """
 
     __lox_class: LoxClass = field()
+
+    def __setattr__(self, name: str, value: "Value"):
+        if name.startswith('_'):
+            super().__setattr__(name, value)
+        else:
+            # Aplica coerção para inteiro se necessário
+            coerced_value = coerce_value(name, value)
+            self.__dict__[name] = coerced_value
 
     def __getattr__(self, name: str) -> "Value":
         method = self.__lox_class.get_method(name)
@@ -247,7 +279,10 @@ def ge(a, b):
 
 def add(a, b):
     if isinstance(a, number) and isinstance(b, number):
-        return a + b
+        result = a + b
+        if is_integer_var(getattr(a, 'name', '')) and is_integer_var(getattr(b, 'name', '')):
+            return int(result)
+        return result
     if isinstance(a, str) and isinstance(b, str):
         return a + b
     raise LoxError(f"Soma entre {type(a).__name__} e {type(b).__name__}")
@@ -255,23 +290,30 @@ def add(a, b):
 
 def sub(a, b):
     if isinstance(a, number) and isinstance(b, number):
-        return a - b
-    raise LoxError(f"Soma entre {type(a).__name__} e {type(b).__name__}")
-
+        result = a - b
+        if is_integer_var(getattr(a, 'name', '')) and is_integer_var(getattr(b, 'name', '')):
+            return int(result)
+        return result
+    raise LoxError(f"Subtração entre {type(a).__name__} e {type(b).__name__}")
 
 def mul(a, b):
     if isinstance(a, number) and isinstance(b, number):
-        return a * b
+        result = a * b
+        if is_integer_var(getattr(a, 'name', '')) and is_integer_var(getattr(b, 'name', '')):
+            return int(result)
+        return result
     raise LoxError(f"Multiplicação entre {type(a).__name__} e {type(b).__name__}")
 
 
 def truediv(a, b):
-    if isinstance(a, int) and isinstance(b, int):
-        return a // b
+
     if isinstance(a, number) and isinstance(b, number):
         if b == 0:
             return float("nan")
-        return a / b
+        result = a / b
+        if is_integer_var(getattr(a, 'name', '')) and is_integer_var(getattr(b, 'name', '')):
+            return int(result) if result >= 0 else int(result) - 1
+        return result
     raise LoxError(f"Divisão entre {type(a).__name__} e {type(b).__name__}")
 
 
@@ -283,3 +325,4 @@ def neg(a):
 
 def not_(a):
     return not truthy(a)
+    

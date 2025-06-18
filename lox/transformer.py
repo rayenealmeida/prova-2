@@ -7,7 +7,7 @@ A resolução de vários exercícios requer a modificação ou implementação d
 métodos desta classe.
 """
 
-from typing import Callable
+from typing import Callable, Optional
 
 from lark import Transformer, v_args
 
@@ -21,10 +21,8 @@ def op_handler(op: Callable):
 
     Recebe a função que implementa a operação em tempo de execução.
     """
-
     def method(self, left, right):
         return BinOp(left, right, op)
-
     return method
 
 
@@ -60,6 +58,61 @@ class LoxTransformer(Transformer):
     def print_cmd(self, expr):
         return Print(expr)
 
+    def return_stmt(self, expr=None):
+        return Return(expr)
+
+    def if_cmd(self, condition, then_branch, else_branch=None):
+        return If(condition, then_branch, else_branch)
+
+    def while_cmd(self, condition, body):
+        return While(condition, body)
+
+    def do_while_cmd(self, body, condition):
+        return DoWhile(condition, body)
+
+    def for_cmd(self, initializer=None, condition=None, increment=None, body=None):
+        return For(initializer, condition, increment, body)
+
+    def assign_expr(self, name, value):
+        return Assign(name, value)
+
+    def type_hint(self, type_name):
+        if isinstance(type_name, Type):
+            return type_name
+        return Type(str(type_name))
+
+    def type_nullable(self, type_name):
+        return Type(str(type_name), nullable=True)
+
+    def var_def(self, name, type_hint=None, initializer=None):
+        name_str = name.name if isinstance(name, Var) else str(name)
+        return VarDef(name_str, initializer, type_hint)
+
+
+    def fun_def(self, name, params, return_type=None, body=None):
+        name_str = str(name)
+        return Function(name_str, params, return_type, body)
+
+
+    def lambda_expr(self, params, return_type=None, body=None):
+        return Lambda(params, body, return_type)
+
+    def params_def(self, *args):
+        return list(args)
+
+    def param_def(self, name, type_hint=None):
+        name_str = str(name)
+        return (name_str, type_hint)
+
+    # Blocks
+    def block(self, *stmts):
+        return Block(list(stmts))
+
+    def block_expr(self, *items):
+        *stmts, expr = items
+        return BlockExpr(list(stmts), expr)
+
+    # Tokens
     def VAR(self, token):
         name = str(token)
         return Var(name)
@@ -77,3 +130,4 @@ class LoxTransformer(Transformer):
 
     def BOOL(self, token):
         return Literal(token == "true")
+    

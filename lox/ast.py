@@ -1,15 +1,8 @@
 from abc import ABC
-from dataclasses import dataclass
-from typing import Callable
+from dataclasses import dataclass, field
+from typing import Callable, Optional
 
 from .ctx import Ctx
-
-# Declaramos nossa classe base num módulo separado para esconder um pouco de
-# Python relativamente avançado de quem não se interessar pelo assunto.
-#
-# A classe Node implementa um método `pretty` que imprime as árvores de forma
-# legível. Também possui funcionalidades para navegar na árvore usando cursores
-# e métodos de visitação.
 from .node import Node
 
 #
@@ -18,6 +11,15 @@ from .node import Node
 
 # Tipos de valores que podem aparecer durante a execução do programa
 Value = bool | str | float | None
+
+
+@dataclass
+class Type(Node):
+    """
+    Representa uma declaração de tipo.
+    """
+    name: str
+    nullable: bool = False
 
 
 class Expr(Node, ABC):
@@ -57,14 +59,10 @@ class Program(Node):
 #
 # EXPRESSÕES
 #
+
 @dataclass
+
 class BinOp(Expr):
-    """
-    Uma operação infixa com dois operandos.
-
-    Ex.: x + y, 2 * x, 3.14 > 3 and 3.14 < 4
-    """
-
     left: Expr
     right: Expr
     op: Callable[[Value, Value], Value]
@@ -72,6 +70,14 @@ class BinOp(Expr):
     def eval(self, ctx: Ctx):
         left_value = self.left.eval(ctx)
         right_value = self.right.eval(ctx)
+        
+        if (isinstance(self.left, Var) and is_integer_var(self.left.name) and
+            isinstance(self.right, Var) and is_integer_var(self.right.name)):
+            left_value = to_integer(left_value)
+            right_value = to_integer(right_value)
+            result = self.op(left_value, right_value)
+            return int(result)
+        
         return self.op(left_value, right_value)
 
 
@@ -180,6 +186,21 @@ class Assign(Expr):
 
     Ex.: x = 42
     """
+    name: str
+    value: Expr
+
+    def eval(self, ctx: Ctx):
+        value = self.value.eval(ctx)
+        if self.name and self.name[0].lower() in {'i', 'j', 'k', 'l', 'm', 'n'}:
+            if isinstance(value, str):
+                try:
+                    value = int(float(value))
+                except (ValueError, TypeError):
+                    value = 0
+            elif isinstance(value, (float, int)):
+                value = int(value)
+        ctx[self.name] = value
+        return value
 
 
 @dataclass
@@ -198,7 +219,24 @@ class Setattr(Expr):
 
     Ex.: x.y = 42
     """
+    obj: Expr
+    attr: str
+    value: Expr
 
+    def eval(self, ctx: Ctx):
+        obj = self.obj.eval(ctx)
+        value = self.value.eval(ctx)
+        # Aplica conversão para inteiro se o nome do atributo começar com i, j, k, l, m ou n
+        if self.attr and self.attr[0].lower() in {'i', 'j', 'k', 'l', 'm', 'n'}:
+            if isinstance(value, str):
+                try:
+                    value = int(float(value))
+                except (ValueError, TypeError):
+                    value = 0
+            elif isinstance(value, (float, int)):
+                value = int(value)
+        setattr(obj, self.attr, value)
+        return value
 
 #
 # COMANDOS
@@ -225,6 +263,7 @@ class Return(Stmt):
 
     Ex.: return x;
     """
+    expr: Optional[Expr] = None
 
 
 @dataclass
@@ -234,6 +273,24 @@ class VarDef(Stmt):
 
     Ex.: var x = 42;
     """
+    name: str
+    initializer: Optional[Expr] = None
+    type_hint: Optional[Type] = None
+
+    def eval(self, ctx: Ctx):
+        if self.initializer is not None:
+            value = self.initializer.eval(ctx)
+            # Aplica conversão para inteiro se o nome da variável começar com i, j, k, l, m ou n
+            if self.name and self.name[0].lower() in {'i', 'j', 'k', 'l', 'm', 'n'}:
+                if isinstance(value, str):
+                    try:
+                        value = int(float(value))
+                    except (ValueError, TypeError):
+                        value = 0
+                elif isinstance(value, (float, int)):
+                    value = int(value)
+            ctx[self.name] = value
+
 
 
 @dataclass
@@ -243,6 +300,9 @@ class If(Stmt):
 
     Ex.: if (x > 0) { ... } else { ... }
     """
+    condition: Expr
+    then_branch: Stmt
+    else_branch: Optional[Stmt] = None
 
 
 @dataclass
@@ -252,6 +312,10 @@ class For(Stmt):
 
     Ex.: for (var i = 0; i < 10; i++) { ... }
     """
+    initializer: Optional[Stmt]
+    condition: Optional[Expr]
+    increment: Optional[Expr]
+    body: Stmt
 
 
 @dataclass
@@ -261,6 +325,8 @@ class While(Stmt):
 
     Ex.: while (x > 0) { ... }
     """
+    condition: Expr
+    body: Stmt
 
 
 @dataclass
@@ -270,16 +336,31 @@ class Block(Node):
 
     Ex.: { var x = 42; print x;  }
     """
+    stmts: list[Stmt]
 
 
 @dataclass
 class Function(Stmt):
-    """
-    Representa uma função.
+    name: str
+    params: list[tuple[str, Optional[Type]]] = field(default_factory=list)
+    return_type: Optional[Type] = None
+    body: Optional[Block] = None
 
-    Ex.: fun f(x, y) { ... }
-    """
+    def eval(self, ctx: Ctx):
+        def lox_function(*args):
+            env = {}
+            for (param_name, _), arg in zip(self.params, args):
+                env[param_name] = arg
+            env = ctx.push(env)
+            try:
+                if self.body:
+                    for stmt in self.body.stmts:
+                        stmt.eval(env)
+            except Return as e:
+                return e.value
+            return None
 
+        ctx[self.name] = lox_function
 
 @dataclass
 class Class(Stmt):
@@ -288,3 +369,17 @@ class Class(Stmt):
 
     Ex.: class B < A { ... }
     """
+    name: str
+    superclass: Optional[Var] = None
+    methods: list[Function] = field(default_factory=list)
+
+@dataclass
+class VarDef(Stmt):
+    name: str
+    initializer: Optional[Expr] = None
+    type_hint: Optional[Type] = None
+
+    def eval(self, ctx: Ctx):
+        if self.initializer is not None:
+            value = self.initializer.eval(ctx)
+            ctx[self.name] = value

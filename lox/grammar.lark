@@ -1,52 +1,67 @@
-?start     : program
+?start         : program
 
-program    : stmt*
+program        : stmt*
 
-?stmt      : expr ";"
-           | print_cmd
-           // | if_cmd
-           // | for_cmd
-           // | ...
+?stmt          : expr ";"
+               | print_cmd
+               | var_def
+               | fun_def
+               // | if_cmd
+               // | for_cmd
+               // | ...
 
-print_cmd  : "print" expr ";"
+print_cmd      : "print" expr ";"
+
+// TIPAGEM
+?type_hint     : ":" type_spec
+type_spec      : CNAME ["?"]    -> type_nullable
+
+// DECLARAÇÃO DE VARIÁVEL
+var_def        : "var" CNAME type_hint? "=" expr ";"
+
+// DECLARAÇÃO DE FUNÇÃO
+fun_def        : "fun" CNAME "(" params_def ")" ["->" type_spec] block
+params_def     : [param_def ("," param_def)*]
+param_def      : CNAME type_hint?
+
+block          : "{" stmt* "}"
 
 // EXPRESSÕES
-?expr      : test
+?expr          : assign
 
-?test      : test "==" cmp  -> eq
-           | test "!=" cmp  -> ne
-           | cmp
+?assign        : ID "=" assign      -> assign_expr
+               | test
 
-?cmp       : cmp ">" factor   -> gt
-           | cmp "<" factor   -> lt
-           | cmp ">=" factor  -> ge
-           | cmp "<=" factor  -> le
-           | factor
+?test          : test "==" sum      -> eq
+               | test "!=" sum      -> ne
+               | sum
 
-?factor    : factor "+" term  -> add
-           | factor "-" term  -> sub
-           | term
+?sum           : sum "+" term       -> add
+               | sum "-" term       -> sub
+               | term
 
-?term      : term "*" atom   -> mul
-           | term "/" atom   -> div 
-           | atom
+?term          : term "*" factor    -> mul
+               | term "/" factor    -> div
+               | factor
 
-?atom      : NUMBER 
-           | BOOL
-           | VAR
-           | STRING
-           | NIL
-           | "(" cmp ")"
-           | call
+?factor        : CNAME
+               | NUMBER
+               | BOOL
+               | STRING
+               | NIL
+               | "(" expr ")"
+               | call
 
-call       : VAR "(" params ")"
-params     : [ expr ("," expr )* ]
+call           : CNAME "(" params ")"
+params         : [ expr ("," expr )* ]
 
-BOOL.2     : "true" | "false"
-VAR.1      : /[a-z_]\w*/
-NUMBER     : /([1-9][0-9]*|0)(\.[0-9]+)?/ 
-STRING     : /"[^"]*"/
-NIL.2      : "nil"
-COMMENT    : "//" /[^\n]*/
+// TOKENS
+BOOL.2         : "true" | "false"
+CNAME          : /[a-zA-Z_]\w*/
+ID             : CNAME
+NUMBER         : /([1-9][0-9]*|0)(\.[0-9]+)?/
+STRING         : /"[^"]*"/
+NIL.2          : "nil"
+COMMENT        : "//" /[^\n]*/
 
 %ignore /\s/ | COMMENT
